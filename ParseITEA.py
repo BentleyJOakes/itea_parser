@@ -1,5 +1,8 @@
 import requests, re
 from html.parser import HTMLParser
+from collections import defaultdict
+import codecs
+from ast import literal_eval
 
 class MyHTMLParser(HTMLParser):
 
@@ -84,18 +87,66 @@ class MyHTMLParser(HTMLParser):
             if self.h5_count == 6:
                 self.h5_count = 0
 
-    def output(self):
-        print("Title: " + self.title)
-        print(self.h1)
-        print(self.start_date)
-        print(self.end_date)
-        print(self.description)
-        print(self.h5)
+    def get_output(self):
+        #print("Title: " + self.title)
+        # print(self.h1)
+        # print(self.start_date)
+        # print(self.end_date)
+        # print(self.description)
+        # print(self.h5)
+
+        partners = []
+        for i in range(0, len(self.h5), 3):
+            p = self.h5[i]
+            if "'" not in self.h5[i]:
+                p = literal_eval("b'{}'".format(p)).decode('utf-8')
+            u, c = self.h5[i+1], self.h5[i+2]
+            partners.append((p, u, c))
+
+        return {
+            'acronym' : self.h1[0],
+            'title' : self.h1[1],
+            'start_date' : self.start_date,
+            'end_date' : self.end_date,
+            'description' : self.description,
+            'partners' : partners
+        }
+
 
 class ITEAParser:
 
     def __init__(self):
-        pass
+        self.out_file = open("out.csv", 'w', encoding='utf-8')
+
+        self.headers = ["acronym", 'title', 'start_date', 'end_date', 'description', 'partners']
+        for h in self.headers:
+            self.out_file.write(h.title() + ";")
+
+        self.out_file.write("Partner Link;Partner Country;")
+        self.out_file.write("\n")
+
+        self.partner_count = defaultdict(int)
+        self.country_count = defaultdict(int)
+
+    def __del__(self):
+
+        self.out_file.close()
+
+
+    def write_partner_count(self):
+        with open("partner_count.csv", 'w', encoding='utf-8') as f:
+
+            f.write("Partner;Times in Projects\n")
+            for k in sorted(self.partner_count, key=self.partner_count.get, reverse=True):
+                f.write(k + ";" + str(self.partner_count[k]) + "\n")
+
+    def write_country_count(self):
+        with open("country_count.csv", 'w', encoding='utf-8') as f:
+
+            f.write("Country;Times in Projects\n")
+            for k in sorted(self.country_count, key=self.country_count.get, reverse=True):
+                f.write(k + ";" + str(self.country_count[k]) + "\n")
+
 
     def parse(self, url):
         if url.startswith("#"):
@@ -108,8 +159,23 @@ class ITEAParser:
         mhp = MyHTMLParser()
         mhp.feed(str(r.content))
 
-        mhp.output()
+        content = mhp.get_output()
+        print(content)
 
+        for h in self.headers:
+            if h == "partners":
+                continue
+
+            self.out_file.write(str(content[h]) + ";")
+        self.out_file.write("\n")
+
+        for p in content["partners"]:
+            for i in range(len(self.headers) - 1):
+                self.out_file.write(";")
+            self.out_file.write(p[0] + ";" + p[1] + ";" + p[2] + "\n")
+
+            self.partner_count[p[0]] += 1
+            self.country_count[p[2]] += 1
 
 if __name__ == "__main__":
 
@@ -117,3 +183,6 @@ if __name__ == "__main__":
     with open("ITEA_projects.txt") as f:
         for line in f:
             ITEAP.parse(line.strip())
+
+    ITEAP.write_partner_count()
+    ITEAP.write_country_count()
